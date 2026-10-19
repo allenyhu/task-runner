@@ -21,13 +21,14 @@ const (
 
 // Model is the root Bubble Tea model.
 type Model struct {
-	store  *store.Store
-	mode   mode
-	cursor int
-	input  textinput.Model
-	err    error
-	width  int
-	height int
+	store       *store.Store
+	mode        mode
+	cursor      int
+	input       textinput.Model
+	addPriority int // draft priority while adding (1–3)
+	err         error
+	width       int
+	height      int
 }
 
 // New creates a Model bound to an already-loaded store.
@@ -38,9 +39,10 @@ func New(s *store.Store) Model {
 	ti.Width = 50
 
 	return Model{
-		store: s,
-		mode:  modeList,
-		input: ti,
+		store:       s,
+		mode:        modeList,
+		input:       ti,
+		addPriority: store.PriorityP2,
 	}
 }
 

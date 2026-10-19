@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/allenhuang/task-runner/internal/store"
 	"github.com/allenhuang/task-runner/internal/style"
 )
 
@@ -30,8 +31,19 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.err = err
 				}
 			}
+		case "1", "2", "3":
+			if len(m.store.Tasks) > 0 {
+				p := int(msg.String()[0] - '0')
+				idx, err := m.store.SetPriority(m.cursor, p)
+				if err != nil {
+					m.err = err
+				} else if idx >= 0 {
+					m.cursor = idx
+				}
+			}
 		case "a":
 			m.mode = modeAdd
+			m.addPriority = store.PriorityP2
 			m.input.SetValue("")
 			m.input.Focus()
 			return m, textinput.Blink
@@ -64,22 +76,24 @@ func (m Model) viewList() string {
 			if t.Done {
 				check = "[x]"
 			}
-			line := fmt.Sprintf("%s %s", check, t.Title)
+			plain := fmt.Sprintf("%s P%d  %s", check, store.NormalizePriority(t.Priority), t.Title)
 
 			var rendered string
 			switch {
 			case i == m.cursor:
-				rendered = style.Selected.Render("> " + line)
+				rendered = style.Selected.Render("> " + plain)
 			case t.Done:
-				rendered = style.Done.Render("  " + line)
+				rendered = style.Done.Render("  " + plain)
 			default:
-				rendered = style.Normal.Render("  " + line)
+				rendered = style.Normal.Render("  "+check+" ") +
+					priorityLabel(t.Priority) +
+					style.Normal.Render("  "+t.Title)
 			}
 			b.WriteString(rendered)
 			b.WriteString("\n")
 		}
 	}
 
-	b.WriteString(style.Help.Render("j/k: move  space: toggle  a: add  d: delete  r: review  q: quit"))
+	b.WriteString(style.Help.Render("j/k: move  space: toggle  1/2/3: priority  a: add  d: delete  r: review  q: quit"))
 	return b.String()
 }
