@@ -78,6 +78,74 @@ func TestSortTasksByPriority(t *testing.T) {
 	}
 }
 
+func TestSortTasksDoneAtBottomByPriority(t *testing.T) {
+	s := &Store{Tasks: []Task{
+		{ID: "done-p1", Title: "done high", Priority: PriorityP1, Done: true, CreatedAt: time.Unix(1, 0)},
+		{ID: "open-p3", Title: "open low", Priority: PriorityP3, Done: false, CreatedAt: time.Unix(2, 0)},
+		{ID: "done-p3", Title: "done low", Priority: PriorityP3, Done: true, CreatedAt: time.Unix(3, 0)},
+		{ID: "open-p1", Title: "open high", Priority: PriorityP1, Done: false, CreatedAt: time.Unix(4, 0)},
+		{ID: "done-p2", Title: "done mid", Priority: PriorityP2, Done: true, CreatedAt: time.Unix(5, 0)},
+	}}
+	s.sortTasks()
+	want := []string{"open-p1", "open-p3", "done-p1", "done-p2", "done-p3"}
+	for i, id := range want {
+		if s.Tasks[i].ID != id {
+			t.Fatalf("index %d = %s, want %s (order: %+v)", i, s.Tasks[i].ID, id, ids(s))
+		}
+	}
+}
+
+func TestToggleDoneMovesToBottom(t *testing.T) {
+	useTempPath(t)
+	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{
+		{ID: "a", Title: "high", Priority: PriorityP1, CreatedAt: time.Unix(1, 0)},
+		{ID: "b", Title: "mid", Priority: PriorityP2, CreatedAt: time.Unix(2, 0)},
+		{ID: "c", Title: "low", Priority: PriorityP3, CreatedAt: time.Unix(3, 0)},
+	}}
+
+	// Complete P1 — should move below open tasks, first among done (by priority).
+	newIdx, err := s.ToggleDone(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newIdx != 2 {
+		t.Fatalf("completed P1 index = %d, want 2", newIdx)
+	}
+	if got := titles(s); got[0] != "mid" || got[1] != "low" || got[2] != "high" {
+		t.Fatalf("order after completing high = %v, want [mid low high]", got)
+	}
+	if !s.Tasks[2].Done || s.Tasks[2].DoneAt == nil {
+		t.Fatalf("expected high marked done with DoneAt, got %+v", s.Tasks[2])
+	}
+
+	// Complete P3 — done section ordered by priority: high (P1) then low (P3).
+	newIdx, err = s.ToggleDone(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newIdx != 2 {
+		t.Fatalf("completed P3 index = %d, want 2", newIdx)
+	}
+	if got := titles(s); got[0] != "mid" || got[1] != "high" || got[2] != "low" {
+		t.Fatalf("order after completing low = %v, want [mid high low]", got)
+	}
+
+	// Uncomplete high — returns to open section, above mid by priority.
+	newIdx, err = s.ToggleDone(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newIdx != 0 {
+		t.Fatalf("uncompleted high index = %d, want 0", newIdx)
+	}
+	if got := titles(s); got[0] != "high" || got[1] != "mid" || got[2] != "low" {
+		t.Fatalf("order after uncompleting high = %v, want [high mid low]", got)
+	}
+	if s.Tasks[0].Done || s.Tasks[0].DoneAt != nil {
+		t.Fatalf("expected high open again, got %+v", s.Tasks[0])
+	}
+}
+
 func TestAddTaskOrdersByPriority(t *testing.T) {
 	useTempPath(t)
 	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{}}
@@ -166,6 +234,14 @@ func titles(s *Store) []string {
 	out := make([]string, len(s.Tasks))
 	for i, t := range s.Tasks {
 		out[i] = t.Title
+	}
+	return out
+}
+
+func ids(s *Store) []string {
+	out := make([]string, len(s.Tasks))
+	for i, t := range s.Tasks {
+		out[i] = t.ID
 	}
 	return out
 }

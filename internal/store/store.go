@@ -161,11 +161,13 @@ func (s *Store) SetPriority(index, priority int) (int, error) {
 	return s.IndexByID(id), nil
 }
 
-// ToggleDone flips done on the task at index and persists.
-func (s *Store) ToggleDone(index int) error {
+// ToggleDone flips done on the task at index, re-sorts, and persists.
+// Returns the task's new index after sorting.
+func (s *Store) ToggleDone(index int) (int, error) {
 	if index < 0 || index >= len(s.Tasks) {
-		return nil
+		return index, nil
 	}
+	id := s.Tasks[index].ID
 	t := &s.Tasks[index]
 	t.Done = !t.Done
 	if t.Done {
@@ -174,7 +176,11 @@ func (s *Store) ToggleDone(index int) error {
 	} else {
 		t.DoneAt = nil
 	}
-	return s.Save()
+	s.sortTasks()
+	if err := s.Save(); err != nil {
+		return -1, err
+	}
+	return s.IndexByID(id), nil
 }
 
 // DeleteTask removes the task at index and persists.
@@ -203,9 +209,13 @@ func (s *Store) normalizeAndSort() {
 	s.sortTasks()
 }
 
-// sortTasks orders by priority ascending (P1 first), then CreatedAt ascending.
+// sortTasks orders incomplete tasks first, then completed; within each group
+// by priority ascending (P1 first), then CreatedAt ascending.
 func (s *Store) sortTasks() {
 	sort.SliceStable(s.Tasks, func(i, j int) bool {
+		if s.Tasks[i].Done != s.Tasks[j].Done {
+			return !s.Tasks[i].Done // incomplete before done
+		}
 		pi := NormalizePriority(s.Tasks[i].Priority)
 		pj := NormalizePriority(s.Tasks[j].Priority)
 		if pi != pj {
