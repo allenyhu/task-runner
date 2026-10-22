@@ -18,8 +18,9 @@ func (m Model) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.mode = modeList
 			return m, nil
-		case "1", "2", "3":
-			m.addPriority = int(msg.String()[0] - '0')
+		case "ctrl+p":
+			// Cycle P1 → P2 → P3 → P1 (digits stay free for the title).
+			m.addPriority = store.NormalizePriority(m.addPriority%3 + 1)
 			return m, nil
 		case "enter":
 			title := strings.TrimSpace(m.input.Value())
@@ -51,7 +52,7 @@ func (m Model) viewAdd() string {
 	b.WriteString(style.StatLabel.Render("Priority  "))
 	b.WriteString(priorityLabel(m.addPriority))
 	b.WriteString("\n")
-	b.WriteString(style.Help.Render("1/2/3: priority  enter: save  esc: cancel"))
+	b.WriteString(style.Help.Render("ctrl+p: priority  enter: save  esc: cancel"))
 	return b.String()
 }
 

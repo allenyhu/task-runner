@@ -29,7 +29,7 @@ Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered P
 | `r` | Weekly review |
 | `q` | Quit |
 
-In **add** mode: `1`/`2`/`3` sets priority (default P2), `enter` saves, `esc` cancels.  
+In **add** mode: `ctrl+p` cycles priority (default P2), `enter` saves, `esc` cancels. Digits type normally in the title.  
 In **review** mode: `esc` or `r` returns to the list.
 
 ## Releases
