@@ -27,8 +27,11 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case " ":
 			if len(m.store.Tasks) > 0 {
-				if err := m.store.ToggleDone(m.cursor); err != nil {
+				idx, err := m.store.ToggleDone(m.cursor)
+				if err != nil {
 					m.err = err
+				} else if idx >= 0 {
+					m.cursor = idx
 				}
 			}
 		case "1", "2", "3":
