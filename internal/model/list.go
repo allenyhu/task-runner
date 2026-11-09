@@ -14,9 +14,25 @@ import (
 func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+		if key == "g" {
+			if m.pendingG {
+				m.cursor = 0
+				m.pendingG = false
+			} else {
+				m.pendingG = true
+			}
+			return m, nil
+		}
+		m.pendingG = false
+
+		switch key {
 		case "q", "ctrl+c":
 			return m, tea.Quit
+		case "G":
+			if n := len(m.store.Tasks); n > 0 {
+				m.cursor = n - 1
+			}
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
@@ -36,7 +52,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "1", "2", "3":
 			if len(m.store.Tasks) > 0 {
-				p := int(msg.String()[0] - '0')
+				p := int(key[0] - '0')
 				idx, err := m.store.SetPriority(m.cursor, p)
 				if err != nil {
 					m.err = err
@@ -101,6 +117,6 @@ func (m Model) viewList() string {
 		}
 	}
 
-	b.WriteString(style.Help.Render("j/k: move  space: toggle  1/2/3: priority  a: add  d: delete  r: review  h: history  q: quit"))
+	b.WriteString(style.Help.Render("j/k: move  gg/G: top/bottom  space: toggle  1/2/3: priority  a: add  d: delete  r: review  h: history  q: quit"))
 	return b.String()
 }

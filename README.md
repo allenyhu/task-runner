@@ -22,6 +22,8 @@ Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered P
 |-----|--------|
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
+| `gg` | Jump to top of list |
+| `G` | Jump to bottom of list |
 | `space` | Toggle done |
 | `1` / `2` / `3` | Set priority of selected task |
 | `a` | Add a task |
@@ -32,7 +34,7 @@ Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered P
 
 In **add** mode: `ctrl+1` / `ctrl+2` / `ctrl+3` sets priority (default P2), `enter` saves, `esc` cancels. Digits type normally in the title.  
 In **review** mode: `esc` or `r` returns to the list.  
-In **history** mode: `h`/`l` older/newer week, `j`/`k` move, `m` move task to this week, `d` delete leftover, `esc` back to the list.
+In **history** mode: `h`/`l` older/newer week, `j`/`k` move, `gg`/`G` top/bottom, `m` move task to this week, `d` delete leftover, `esc` back to the list.
 
 ## Releases
 

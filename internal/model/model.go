@@ -27,6 +27,7 @@ type Model struct {
 	cursor      int
 	histWeek    int // index into PastWeeks (0 = newest)
 	histCursor  int
+	pendingG    bool // waiting for second g (gg → top)
 	input       textinput.Model
 	addPriority int // draft priority while adding (1–3)
 	err         error

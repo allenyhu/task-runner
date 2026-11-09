@@ -13,13 +13,29 @@ import (
 func (m Model) updateHistory(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
+		key := msg.String()
+		if key == "g" {
+			if m.pendingG {
+				m.histCursor = 0
+				m.pendingG = false
+			} else {
+				m.pendingG = true
+			}
+			return m, nil
+		}
+		m.pendingG = false
+
+		switch key {
 		case "esc", "q":
-			if msg.String() == "q" {
+			if key == "q" {
 				return m, tea.Quit
 			}
 			m.mode = modeList
 			return m, nil
+		case "G":
+			if pw, ok := m.store.PastWeekAt(m.histWeek); ok && len(pw.Tasks) > 0 {
+				m.histCursor = len(pw.Tasks) - 1
+			}
 		case "h":
 			// Older week (further back in PastWeeks).
 			if m.histWeek < m.store.PastWeekCount()-1 {
@@ -132,6 +148,6 @@ func (m Model) viewHistory() string {
 		}
 	}
 
-	b.WriteString(style.Help.Render("h/l: week  j/k: move  m: to this week  d: delete  esc: back"))
+	b.WriteString(style.Help.Render("h/l: week  j/k: move  gg/G: top/bottom  m: to this week  d: delete  esc: back"))
 	return b.String()
 }
