@@ -60,6 +60,10 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.mode = modeReview
+		case "h":
+			m.mode = modeHistory
+			m.histWeek = 0
+			m.histCursor = 0
 		}
 	}
 	return m, nil
@@ -97,6 +101,6 @@ func (m Model) viewList() string {
 		}
 	}
 
-	b.WriteString(style.Help.Render("j/k: move  space: toggle  1/2/3: priority  a: add  d: delete  r: review  q: quit"))
+	b.WriteString(style.Help.Render("j/k: move  space: toggle  1/2/3: priority  a: add  d: delete  r: review  h: history  q: quit"))
 	return b.String()
 }

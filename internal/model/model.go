@@ -17,6 +17,7 @@ const (
 	modeList mode = iota
 	modeAdd
 	modeReview
+	modeHistory
 )
 
 // Model is the root Bubble Tea model.
@@ -24,6 +25,8 @@ type Model struct {
 	store       *store.Store
 	mode        mode
 	cursor      int
+	histWeek    int // index into PastWeeks (0 = newest)
+	histCursor  int
 	input       textinput.Model
 	addPriority int // draft priority while adding (1–3)
 	err         error
@@ -63,6 +66,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateAdd(msg)
 	case modeReview:
 		return m.updateReview(msg)
+	case modeHistory:
+		return m.updateHistory(msg)
 	default:
 		return m.updateList(msg)
 	}
@@ -75,6 +80,8 @@ func (m Model) View() string {
 		body = m.viewAdd()
 	case modeReview:
 		body = m.viewReview()
+	case modeHistory:
+		body = m.viewHistory()
 	default:
 		body = m.viewList()
 	}
