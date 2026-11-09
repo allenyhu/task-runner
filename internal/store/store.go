@@ -38,10 +38,17 @@ type Task struct {
 	DoneAt    *time.Time `json:"done_at,omitempty"`
 }
 
-// Store holds the current week's tasks.
-type Store struct {
+// PastWeek holds incomplete leftovers from a previous week.
+type PastWeek struct {
 	WeekStart time.Time `json:"week_start"` // Monday 00:00 local
-	Tasks     []Task    `json:"tasks"`
+	Tasks     []Task    `json:"tasks"`      // incomplete only
+}
+
+// Store holds the current week's tasks and archived leftovers.
+type Store struct {
+	WeekStart time.Time  `json:"week_start"` // Monday 00:00 local
+	Tasks     []Task     `json:"tasks"`
+	PastWeeks []PastWeek `json:"past_weeks,omitempty"` // newest first
 }
 
 // WeekStart returns Monday 00:00:00 local for the week containing t.
@@ -71,7 +78,8 @@ func defaultPath() (string, error) {
 }
 
 // Load reads ~/.task-runner/tasks.json. Missing file yields an empty current week.
-// If the stored week is not the current week, tasks are cleared (week rollover).
+// If the stored week is not the current week, incomplete tasks are archived into
+// PastWeeks and the current list is cleared (week rollover).
 func Load() (*Store, error) {
 	path, err := pathFunc()
 	if err != nil {
@@ -93,8 +101,19 @@ func Load() (*Store, error) {
 		return nil, err
 	}
 
+	if s.PastWeeks == nil {
+		s.PastWeeks = []PastWeek{}
+	}
+
 	storedWeek := WeekStart(s.WeekStart)
 	if !storedWeek.Equal(thisWeek) {
+		incomplete := incompleteTasks(s.Tasks)
+		if len(incomplete) > 0 {
+			s.PastWeeks = append([]PastWeek{{
+				WeekStart: storedWeek,
+				Tasks:     incomplete,
+			}}, s.PastWeeks...)
+		}
 		s.WeekStart = thisWeek
 		s.Tasks = []Task{}
 		if err := s.Save(); err != nil {
@@ -200,6 +219,67 @@ func (s *Store) IndexByID(id string) int {
 		}
 	}
 	return -1
+}
+
+// PastWeekCount returns the number of archived past weeks.
+func (s *Store) PastWeekCount() int {
+	return len(s.PastWeeks)
+}
+
+// PastWeekAt returns the past week at index, or false if out of range.
+func (s *Store) PastWeekAt(index int) (PastWeek, bool) {
+	if index < 0 || index >= len(s.PastWeeks) {
+		return PastWeek{}, false
+	}
+	return s.PastWeeks[index], true
+}
+
+// MoveToCurrent moves a leftover task from a past week into the current week.
+// Preserves ID, title, priority, and CreatedAt. Prunes the past week if empty.
+func (s *Store) MoveToCurrent(pastWeekIndex, taskIndex int) error {
+	if pastWeekIndex < 0 || pastWeekIndex >= len(s.PastWeeks) {
+		return nil
+	}
+	pw := &s.PastWeeks[pastWeekIndex]
+	if taskIndex < 0 || taskIndex >= len(pw.Tasks) {
+		return nil
+	}
+	t := pw.Tasks[taskIndex]
+	t.Done = false
+	t.DoneAt = nil
+	pw.Tasks = append(pw.Tasks[:taskIndex], pw.Tasks[taskIndex+1:]...)
+	if len(pw.Tasks) == 0 {
+		s.PastWeeks = append(s.PastWeeks[:pastWeekIndex], s.PastWeeks[pastWeekIndex+1:]...)
+	}
+	s.Tasks = append(s.Tasks, t)
+	s.sortTasks()
+	return s.Save()
+}
+
+// DeletePastTask removes a leftover from a past week and prunes the week if empty.
+func (s *Store) DeletePastTask(pastWeekIndex, taskIndex int) error {
+	if pastWeekIndex < 0 || pastWeekIndex >= len(s.PastWeeks) {
+		return nil
+	}
+	pw := &s.PastWeeks[pastWeekIndex]
+	if taskIndex < 0 || taskIndex >= len(pw.Tasks) {
+		return nil
+	}
+	pw.Tasks = append(pw.Tasks[:taskIndex], pw.Tasks[taskIndex+1:]...)
+	if len(pw.Tasks) == 0 {
+		s.PastWeeks = append(s.PastWeeks[:pastWeekIndex], s.PastWeeks[pastWeekIndex+1:]...)
+	}
+	return s.Save()
+}
+
+func incompleteTasks(tasks []Task) []Task {
+	out := make([]Task, 0, len(tasks))
+	for _, t := range tasks {
+		if !t.Done {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 func (s *Store) normalizeAndSort() {

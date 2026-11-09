@@ -12,7 +12,7 @@ A terminal UI for tracking a flat weekly task list. Built with [Bubble Tea](http
 go run .
 ```
 
-Tasks persist to `~/.task-runner/tasks.json`. When a new week starts (Monday), the list resets so review always reflects the current week.
+Tasks persist to `~/.task-runner/tasks.json`. When a new week starts (Monday), completed tasks are cleared and incomplete ones are archived so you can pull them forward from **history**. Review always reflects the current week.
 
 Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered P1 → P3.
 
@@ -27,10 +27,12 @@ Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered P
 | `a` | Add a task |
 | `d` | Delete selected task |
 | `r` | Weekly review |
+| `h` | Previous weeks (history) |
 | `q` | Quit |
 
 In **add** mode: `ctrl+p` cycles priority (default P2), `enter` saves, `esc` cancels. Digits type normally in the title.  
-In **review** mode: `esc` or `r` returns to the list.
+In **review** mode: `esc` or `r` returns to the list.  
+In **history** mode: `h`/`l` older/newer week, `j`/`k` move, `m` move task to this week, `d` delete leftover, `esc` back to the list.
 
 ## Releases
 

@@ -230,6 +230,159 @@ func TestSetPriorityReordersAndReturnsIndex(t *testing.T) {
 	}
 }
 
+func TestLoadRolloverArchivesIncomplete(t *testing.T) {
+	useTempPath(t)
+	lastWeek := WeekStart(time.Now()).AddDate(0, 0, -7)
+	s := &Store{
+		WeekStart: lastWeek,
+		Tasks: []Task{
+			{ID: "open", Title: "leftover", Priority: PriorityP1, Done: false, CreatedAt: time.Unix(1, 0)},
+			{ID: "done", Title: "finished", Priority: PriorityP2, Done: true, CreatedAt: time.Unix(2, 0)},
+		},
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	thisWeek := WeekStart(time.Now())
+	if !loaded.WeekStart.Equal(thisWeek) {
+		t.Fatalf("WeekStart = %v, want %v", loaded.WeekStart, thisWeek)
+	}
+	if len(loaded.Tasks) != 0 {
+		t.Fatalf("current tasks = %v, want empty", titles(loaded))
+	}
+	if len(loaded.PastWeeks) != 1 {
+		t.Fatalf("PastWeeks len = %d, want 1", len(loaded.PastWeeks))
+	}
+	pw := loaded.PastWeeks[0]
+	if !WeekStart(pw.WeekStart).Equal(lastWeek) {
+		t.Fatalf("past WeekStart = %v, want %v", pw.WeekStart, lastWeek)
+	}
+	if len(pw.Tasks) != 1 || pw.Tasks[0].ID != "open" {
+		t.Fatalf("past tasks = %+v, want [open]", pw.Tasks)
+	}
+}
+
+func TestLoadRolloverAllDoneNoPastWeek(t *testing.T) {
+	useTempPath(t)
+	lastWeek := WeekStart(time.Now()).AddDate(0, 0, -7)
+	s := &Store{
+		WeekStart: lastWeek,
+		Tasks: []Task{
+			{ID: "done", Title: "finished", Priority: PriorityP2, Done: true, CreatedAt: time.Unix(1, 0)},
+		},
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Tasks) != 0 {
+		t.Fatalf("current tasks = %v, want empty", titles(loaded))
+	}
+	if len(loaded.PastWeeks) != 0 {
+		t.Fatalf("PastWeeks = %+v, want empty", loaded.PastWeeks)
+	}
+}
+
+func TestLoadLegacyJSONNoPastWeeks(t *testing.T) {
+	useTempPath(t)
+	thisWeek := WeekStart(time.Now())
+	s := &Store{
+		WeekStart: thisWeek,
+		Tasks: []Task{
+			{ID: "a", Title: "now", Priority: PriorityP2, CreatedAt: time.Unix(1, 0)},
+		},
+	}
+	if err := s.Save(); err != nil {
+		t.Fatal(err)
+	}
+
+	loaded, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(loaded.Tasks) != 1 || loaded.Tasks[0].ID != "a" {
+		t.Fatalf("tasks = %+v, want [a]", loaded.Tasks)
+	}
+	if loaded.PastWeeks == nil {
+		t.Fatal("PastWeeks should be non-nil empty slice")
+	}
+	if len(loaded.PastWeeks) != 0 {
+		t.Fatalf("PastWeeks = %+v, want empty", loaded.PastWeeks)
+	}
+}
+
+func TestMoveToCurrent(t *testing.T) {
+	useTempPath(t)
+	created := time.Unix(10, 0)
+	s := &Store{
+		WeekStart: WeekStart(time.Now()),
+		Tasks:     []Task{},
+		PastWeeks: []PastWeek{{
+			WeekStart: WeekStart(time.Now()).AddDate(0, 0, -7),
+			Tasks: []Task{
+				{ID: "x", Title: "carry", Priority: PriorityP1, CreatedAt: created},
+			},
+		}},
+	}
+
+	if err := s.MoveToCurrent(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.PastWeeks) != 0 {
+		t.Fatalf("PastWeeks = %+v, want pruned", s.PastWeeks)
+	}
+	if len(s.Tasks) != 1 {
+		t.Fatalf("tasks len = %d, want 1", len(s.Tasks))
+	}
+	got := s.Tasks[0]
+	if got.ID != "x" || got.Title != "carry" || got.Priority != PriorityP1 {
+		t.Fatalf("moved task = %+v", got)
+	}
+	if !got.CreatedAt.Equal(created) {
+		t.Fatalf("CreatedAt = %v, want %v", got.CreatedAt, created)
+	}
+	if got.Done || got.DoneAt != nil {
+		t.Fatalf("expected incomplete, got %+v", got)
+	}
+}
+
+func TestDeletePastTask(t *testing.T) {
+	useTempPath(t)
+	s := &Store{
+		WeekStart: WeekStart(time.Now()),
+		PastWeeks: []PastWeek{{
+			WeekStart: WeekStart(time.Now()).AddDate(0, 0, -7),
+			Tasks: []Task{
+				{ID: "a", Title: "keep", Priority: PriorityP2, CreatedAt: time.Unix(1, 0)},
+				{ID: "b", Title: "drop", Priority: PriorityP3, CreatedAt: time.Unix(2, 0)},
+			},
+		}},
+	}
+
+	if err := s.DeletePastTask(0, 1); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.PastWeeks) != 1 || len(s.PastWeeks[0].Tasks) != 1 || s.PastWeeks[0].Tasks[0].ID != "a" {
+		t.Fatalf("after delete: %+v", s.PastWeeks)
+	}
+
+	if err := s.DeletePastTask(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	if len(s.PastWeeks) != 0 {
+		t.Fatalf("PastWeeks = %+v, want pruned", s.PastWeeks)
+	}
+}
+
 func titles(s *Store) []string {
 	out := make([]string, len(s.Tasks))
 	for i, t := range s.Tasks {
