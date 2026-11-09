@@ -16,6 +16,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		key := msg.String()
 		if key == "g" {
+			m.err = nil
 			if m.pendingG {
 				m.cursor = 0
 				m.pendingG = false
@@ -25,6 +26,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.pendingG = false
+		m.err = nil
 
 		switch key {
 		case "q", "ctrl+c":
@@ -54,6 +56,15 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.store.Tasks) > 0 {
 				p := int(key[0] - '0')
 				idx, err := m.store.SetPriority(m.cursor, p)
+				if err != nil {
+					m.err = err
+				} else if idx >= 0 {
+					m.cursor = idx
+				}
+			}
+		case "p":
+			if len(m.store.Tasks) > 0 {
+				idx, err := m.store.ToggleParked(m.cursor)
 				if err != nil {
 					m.err = err
 				} else if idx >= 0 {
@@ -99,7 +110,11 @@ func (m Model) viewList() string {
 			if t.Done {
 				check = "[x]"
 			}
-			plain := fmt.Sprintf("%s P%d  %s", check, store.NormalizePriority(t.Priority), t.Title)
+			prio := fmt.Sprintf("P%d", store.NormalizePriority(t.Priority))
+			if t.Parked && !t.Done {
+				prio += "~"
+			}
+			plain := fmt.Sprintf("%s %s  %s", check, prio, t.Title)
 
 			var rendered string
 			switch {
@@ -107,6 +122,10 @@ func (m Model) viewList() string {
 				rendered = style.Selected.Render("> " + plain)
 			case t.Done:
 				rendered = style.Done.Render("  " + plain)
+			case t.Parked:
+				rendered = style.Parked.Render("  "+check+" ") +
+					style.Parked.Render(prio) +
+					style.Parked.Render("  "+t.Title)
 			default:
 				rendered = style.Normal.Render("  "+check+" ") +
 					priorityLabel(t.Priority) +
@@ -117,6 +136,6 @@ func (m Model) viewList() string {
 		}
 	}
 
-	b.WriteString(style.Help.Render("j/k: move  gg/G: top/bottom  space: toggle  1/2/3: priority  a: add  d: delete  r: review  h: history  q: quit"))
+	b.WriteString(style.Help.Render("j/k: move  gg/G: top/bottom  space: toggle  1/2/3: priority  p: park  a: add  d: delete  r: review  h: history  q: quit"))
 	return b.String()
 }

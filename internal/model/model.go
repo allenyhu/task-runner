@@ -1,8 +1,6 @@
 package model
 
 import (
-	"fmt"
-
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -88,7 +86,7 @@ func (m Model) View() string {
 	}
 
 	if m.err != nil {
-		body += "\n" + style.Error.Render(fmt.Sprintf("error: %v", m.err))
+		body += "\n" + style.Error.Render(m.err.Error())
 	}
 	return lipgloss.NewStyle().Padding(1, 2).Render(body)
 }

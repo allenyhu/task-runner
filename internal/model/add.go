@@ -15,31 +15,46 @@ func (m Model) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
+			m.err = nil
 			m.input.Blur()
 			m.mode = modeList
 			return m, nil
 		case "ctrl+1":
+			m.err = nil
 			m.addPriority = store.PriorityP1
 			return m, nil
 		case "ctrl+2":
+			m.err = nil
 			m.addPriority = store.PriorityP2
 			return m, nil
 		case "ctrl+3":
+			m.err = nil
 			m.addPriority = store.PriorityP3
 			return m, nil
 		case "enter":
 			title := strings.TrimSpace(m.input.Value())
-			if title != "" {
-				idx, err := m.store.AddTask(title, m.addPriority)
-				if err != nil {
-					m.err = err
-				} else if idx >= 0 {
-					m.cursor = idx
-				}
+			if title == "" {
+				m.err = nil
+				m.input.Blur()
+				m.mode = modeList
+				return m, nil
+			}
+			idx, err := m.store.AddTask(title, m.addPriority)
+			if err != nil {
+				m.err = err
+				// Stay in add mode so the user can change priority or cancel.
+				return m, nil
+			}
+			m.err = nil
+			if idx >= 0 {
+				m.cursor = idx
 			}
 			m.input.Blur()
 			m.mode = modeList
 			return m, nil
+		default:
+			// Typing clears a prior block error.
+			m.err = nil
 		}
 	}
 

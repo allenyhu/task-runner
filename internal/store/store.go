@@ -18,6 +18,9 @@ const (
 	PriorityP3 = 3
 )
 
+// ErrActiveP1Exists is returned when an operation would create a second active P1.
+var ErrActiveP1Exists = errors.New("already have an active P1 — park it or demote first")
+
 // NormalizePriority clamps p to P1–P3; zero/invalid becomes P3.
 func NormalizePriority(p int) int {
 	switch p {
@@ -33,9 +36,15 @@ type Task struct {
 	ID        string     `json:"id"`
 	Title     string     `json:"title"`
 	Priority  int        `json:"priority"` // 1, 2, or 3
+	Parked    bool       `json:"parked,omitempty"`
 	Done      bool       `json:"done"`
 	CreatedAt time.Time  `json:"created_at"`
 	DoneAt    *time.Time `json:"done_at,omitempty"`
+}
+
+// IsActiveP1 reports whether t is an incomplete, unparked P1.
+func (t Task) IsActiveP1() bool {
+	return !t.Done && !t.Parked && NormalizePriority(t.Priority) == PriorityP1
 }
 
 // PastWeek holds incomplete leftovers from a previous week.
@@ -126,7 +135,12 @@ func Load() (*Store, error) {
 	if s.Tasks == nil {
 		s.Tasks = []Task{}
 	}
-	s.normalizeAndSort()
+	changed := s.normalizeAndSort()
+	if changed {
+		if err := s.Save(); err != nil {
+			return nil, err
+		}
+	}
 	return &s, nil
 }
 
@@ -146,15 +160,34 @@ func (s *Store) Save() error {
 	return os.WriteFile(path, data, 0o644)
 }
 
+// ActiveP1Index returns the index of the active (incomplete, unparked) P1, or -1.
+func (s *Store) ActiveP1Index() int {
+	for i, t := range s.Tasks {
+		if t.IsActiveP1() {
+			return i
+		}
+	}
+	return -1
+}
+
+// wouldBeActiveP1 reports whether a task with the given fields would be an active P1.
+func wouldBeActiveP1(priority int, parked, done bool) bool {
+	return !done && !parked && NormalizePriority(priority) == PriorityP1
+}
+
 // AddTask appends a new incomplete task, sorts by priority, and persists.
 // Returns the new task's index after sorting.
 func (s *Store) AddTask(title string, priority int) (int, error) {
+	priority = NormalizePriority(priority)
+	if wouldBeActiveP1(priority, false, false) && s.ActiveP1Index() >= 0 {
+		return -1, ErrActiveP1Exists
+	}
 	now := time.Now()
 	id := uuid.NewString()
 	s.Tasks = append(s.Tasks, Task{
 		ID:        id,
 		Title:     title,
-		Priority:  NormalizePriority(priority),
+		Priority:  priority,
 		Done:      false,
 		CreatedAt: now,
 	})
@@ -171,8 +204,37 @@ func (s *Store) SetPriority(index, priority int) (int, error) {
 	if index < 0 || index >= len(s.Tasks) {
 		return index, nil
 	}
-	id := s.Tasks[index].ID
-	s.Tasks[index].Priority = NormalizePriority(priority)
+	priority = NormalizePriority(priority)
+	t := s.Tasks[index]
+	if wouldBeActiveP1(priority, t.Parked, t.Done) {
+		if active := s.ActiveP1Index(); active >= 0 && active != index {
+			return index, ErrActiveP1Exists
+		}
+	}
+	id := t.ID
+	s.Tasks[index].Priority = priority
+	s.sortTasks()
+	if err := s.Save(); err != nil {
+		return -1, err
+	}
+	return s.IndexByID(id), nil
+}
+
+// ToggleParked flips parked on the task at index, re-sorts, and persists.
+// Unparking a P1 is blocked when another active P1 already exists.
+func (s *Store) ToggleParked(index int) (int, error) {
+	if index < 0 || index >= len(s.Tasks) {
+		return index, nil
+	}
+	t := s.Tasks[index]
+	becomingParked := !t.Parked
+	if !becomingParked && wouldBeActiveP1(t.Priority, false, t.Done) {
+		if active := s.ActiveP1Index(); active >= 0 && active != index {
+			return index, ErrActiveP1Exists
+		}
+	}
+	id := t.ID
+	s.Tasks[index].Parked = becomingParked
 	s.sortTasks()
 	if err := s.Save(); err != nil {
 		return -1, err
@@ -192,8 +254,18 @@ func (s *Store) ToggleDone(index int) (int, error) {
 	if t.Done {
 		now := time.Now()
 		t.DoneAt = &now
+		t.Parked = false
 	} else {
 		t.DoneAt = nil
+		// If uncompleting would create a second active P1, auto-park.
+		if wouldBeActiveP1(t.Priority, t.Parked, false) {
+			for i, other := range s.Tasks {
+				if i != index && other.IsActiveP1() {
+					t.Parked = true
+					break
+				}
+			}
+		}
 	}
 	s.sortTasks()
 	if err := s.Save(); err != nil {
@@ -247,6 +319,9 @@ func (s *Store) MoveToCurrent(pastWeekIndex, taskIndex int) error {
 	t := pw.Tasks[taskIndex]
 	t.Done = false
 	t.DoneAt = nil
+	if wouldBeActiveP1(t.Priority, t.Parked, false) && s.ActiveP1Index() >= 0 {
+		t.Parked = true
+	}
 	pw.Tasks = append(pw.Tasks[:taskIndex], pw.Tasks[taskIndex+1:]...)
 	if len(pw.Tasks) == 0 {
 		s.PastWeeks = append(s.PastWeeks[:pastWeekIndex], s.PastWeeks[pastWeekIndex+1:]...)
@@ -282,26 +357,63 @@ func incompleteTasks(tasks []Task) []Task {
 	return out
 }
 
-func (s *Store) normalizeAndSort() {
+// normalizeAndSort normalizes priorities and ensures at most one active P1
+// (legacy data: oldest by CreatedAt stays active; extras are parked).
+// Returns true if any task was changed.
+func (s *Store) normalizeAndSort() bool {
+	changed := false
 	for i := range s.Tasks {
-		s.Tasks[i].Priority = NormalizePriority(s.Tasks[i].Priority)
+		norm := NormalizePriority(s.Tasks[i].Priority)
+		if s.Tasks[i].Priority != norm {
+			s.Tasks[i].Priority = norm
+			changed = true
+		}
 	}
+
+	var active []int
+	for i, t := range s.Tasks {
+		if t.IsActiveP1() {
+			active = append(active, i)
+		}
+	}
+	if len(active) > 1 {
+		// Keep oldest CreatedAt active; park the rest.
+		keep := active[0]
+		for _, i := range active[1:] {
+			if s.Tasks[i].CreatedAt.Before(s.Tasks[keep].CreatedAt) {
+				keep = i
+			}
+		}
+		for _, i := range active {
+			if i == keep {
+				continue
+			}
+			s.Tasks[i].Parked = true
+			changed = true
+		}
+	}
+
 	s.sortTasks()
+	return changed
 }
 
-// sortTasks orders incomplete tasks first, then completed; within each group
-// by priority ascending (P1 first), then CreatedAt ascending.
+// sortTasks orders incomplete before done; among incomplete, active before
+// parked; then priority ascending (P1 first), then CreatedAt ascending.
 func (s *Store) sortTasks() {
 	sort.SliceStable(s.Tasks, func(i, j int) bool {
-		if s.Tasks[i].Done != s.Tasks[j].Done {
-			return !s.Tasks[i].Done // incomplete before done
+		a, b := s.Tasks[i], s.Tasks[j]
+		if a.Done != b.Done {
+			return !a.Done // incomplete before done
 		}
-		pi := NormalizePriority(s.Tasks[i].Priority)
-		pj := NormalizePriority(s.Tasks[j].Priority)
+		if !a.Done && a.Parked != b.Parked {
+			return !a.Parked // active before parked
+		}
+		pi := NormalizePriority(a.Priority)
+		pj := NormalizePriority(b.Priority)
 		if pi != pj {
 			return pi < pj
 		}
-		return s.Tasks[i].CreatedAt.Before(s.Tasks[j].CreatedAt)
+		return a.CreatedAt.Before(b.CreatedAt)
 	})
 }
 

@@ -50,4 +50,7 @@ var (
 	PriorityP3 = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("159")) // sky mint
+
+	Parked = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("146")) // gentle periwinkle, muted
 )

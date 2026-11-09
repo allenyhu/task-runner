@@ -1,6 +1,7 @@
 package store
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -189,23 +190,34 @@ func TestSetPriorityReordersAndReturnsIndex(t *testing.T) {
 		{ID: "c", Title: "low", Priority: PriorityP3, CreatedAt: time.Unix(3, 0)},
 	}}
 
-	// Promote "low" (index 2) to P1. Same-priority ties keep CreatedAt order,
-	// so it sits after the older P1 ("high").
-	newIdx, err := s.SetPriority(2, PriorityP1)
+	// Demote "high" (index 0) to P2 so the P1 slot is free, then promote "low".
+	newIdx, err := s.SetPriority(0, PriorityP2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newIdx != 1 {
-		t.Fatalf("promoted index = %d, want 1", newIdx)
+	if newIdx != 0 {
+		t.Fatalf("demoted high index = %d, want 0 (still before mid by priority)", newIdx)
+	}
+	if got := titles(s); got[0] != "high" || got[1] != "mid" || got[2] != "low" {
+		t.Fatalf("order after demoting high to P2 = %v, want [high mid low]", got)
+	}
+
+	// Promote "low" (index 2) to P1 — becomes sole active P1 at top.
+	newIdx, err = s.SetPriority(2, PriorityP1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newIdx != 0 {
+		t.Fatalf("promoted index = %d, want 0", newIdx)
 	}
 	if s.Tasks[newIdx].ID != "c" || s.Tasks[newIdx].Priority != PriorityP1 {
 		t.Fatalf("expected c at returned index, got %+v", s.Tasks[newIdx])
 	}
-	if got := titles(s); got[0] != "high" || got[1] != "low" || got[2] != "mid" {
-		t.Fatalf("order after promote = %v, want [high low mid]", got)
+	if got := titles(s); got[0] != "low" || got[1] != "high" || got[2] != "mid" {
+		t.Fatalf("order after promote = %v, want [low high mid]", got)
 	}
 
-	// Demote "mid" (index 2) to P3 — only P3 left, so it stays at bottom.
+	// Demote "mid" (index 2) to P3 — stays at bottom.
 	newIdx, err = s.SetPriority(2, PriorityP3)
 	if err != nil {
 		t.Fatal(err)
@@ -213,20 +225,8 @@ func TestSetPriorityReordersAndReturnsIndex(t *testing.T) {
 	if newIdx != 2 {
 		t.Fatalf("demoted index = %d, want 2", newIdx)
 	}
-	if got := titles(s); got[0] != "high" || got[1] != "low" || got[2] != "mid" {
-		t.Fatalf("order after demote = %v, want [high low mid]", got)
-	}
-
-	// Demote original "high" (index 0) to P3 — should move to bottom (CreatedAt before mid).
-	newIdx, err = s.SetPriority(0, PriorityP3)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if newIdx != 1 {
-		t.Fatalf("demoted high index = %d, want 1 (before mid by CreatedAt)", newIdx)
-	}
 	if got := titles(s); got[0] != "low" || got[1] != "high" || got[2] != "mid" {
-		t.Fatalf("order after demoting high = %v, want [low high mid]", got)
+		t.Fatalf("order after demote = %v, want [low high mid]", got)
 	}
 }
 
@@ -380,6 +380,176 @@ func TestDeletePastTask(t *testing.T) {
 	}
 	if len(s.PastWeeks) != 0 {
 		t.Fatalf("PastWeeks = %+v, want pruned", s.PastWeeks)
+	}
+}
+
+func TestBlockSecondActiveP1AddAndSet(t *testing.T) {
+	useTempPath(t)
+	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{
+		{ID: "a", Title: "focus", Priority: PriorityP1, CreatedAt: time.Unix(1, 0)},
+		{ID: "b", Title: "other", Priority: PriorityP2, CreatedAt: time.Unix(2, 0)},
+	}}
+
+	if _, err := s.AddTask("another", PriorityP1); !errors.Is(err, ErrActiveP1Exists) {
+		t.Fatalf("AddTask P1 err = %v, want ErrActiveP1Exists", err)
+	}
+	if len(s.Tasks) != 2 {
+		t.Fatalf("tasks len after blocked add = %d, want 2", len(s.Tasks))
+	}
+
+	if _, err := s.SetPriority(1, PriorityP1); !errors.Is(err, ErrActiveP1Exists) {
+		t.Fatalf("SetPriority P1 err = %v, want ErrActiveP1Exists", err)
+	}
+	if s.Tasks[1].Priority != PriorityP2 {
+		t.Fatalf("priority after blocked set = %d, want P2", s.Tasks[1].Priority)
+	}
+}
+
+func TestActiveP1AllowedWhenExistingParked(t *testing.T) {
+	useTempPath(t)
+	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{
+		{ID: "a", Title: "parked", Priority: PriorityP1, Parked: true, CreatedAt: time.Unix(1, 0)},
+		{ID: "b", Title: "other", Priority: PriorityP2, CreatedAt: time.Unix(2, 0)},
+	}}
+
+	idx, err := s.AddTask("focus", PriorityP1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx != 0 {
+		t.Fatalf("new P1 index = %d, want 0", idx)
+	}
+	if s.Tasks[0].Title != "focus" || s.Tasks[0].Parked {
+		t.Fatalf("expected active focus P1 at top, got %+v", s.Tasks[0])
+	}
+
+	// Reset: only parked P1 + P3, promote P3 to P1.
+	s.Tasks = []Task{
+		{ID: "a", Title: "parked", Priority: PriorityP1, Parked: true, CreatedAt: time.Unix(1, 0)},
+		{ID: "c", Title: "promote", Priority: PriorityP3, CreatedAt: time.Unix(3, 0)},
+	}
+	newIdx, err := s.SetPriority(1, PriorityP1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newIdx != 0 || s.Tasks[0].ID != "c" {
+		t.Fatalf("promoted = index %d %+v, want 0 c", newIdx, s.Tasks[newIdx])
+	}
+}
+
+func TestToggleParkedFreesAndBlocksUnpark(t *testing.T) {
+	useTempPath(t)
+	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{
+		{ID: "a", Title: "focus", Priority: PriorityP1, CreatedAt: time.Unix(1, 0)},
+		{ID: "b", Title: "waiting", Priority: PriorityP1, Parked: true, CreatedAt: time.Unix(2, 0)},
+	}}
+
+	idx, err := s.ToggleParked(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !s.Tasks[idx].Parked {
+		t.Fatalf("expected focus parked, got %+v", s.Tasks[idx])
+	}
+	if s.ActiveP1Index() >= 0 {
+		t.Fatalf("expected no active P1 after parking focus")
+	}
+
+	// Unpark waiting — becomes sole active P1.
+	waitIdx := s.IndexByID("b")
+	idx, err = s.ToggleParked(waitIdx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.Tasks[idx].Parked || s.Tasks[idx].ID != "b" {
+		t.Fatalf("expected waiting active, got %+v", s.Tasks[idx])
+	}
+
+	// Unpark focus while waiting is active — blocked.
+	focusIdx := s.IndexByID("a")
+	if _, err := s.ToggleParked(focusIdx); !errors.Is(err, ErrActiveP1Exists) {
+		t.Fatalf("unpark err = %v, want ErrActiveP1Exists", err)
+	}
+	if !s.Tasks[s.IndexByID("a")].Parked {
+		t.Fatal("focus should still be parked after blocked unpark")
+	}
+}
+
+func TestSortActiveBeforeParked(t *testing.T) {
+	s := &Store{Tasks: []Task{
+		{ID: "parked-p1", Title: "parked high", Priority: PriorityP1, Parked: true, CreatedAt: time.Unix(1, 0)},
+		{ID: "active-p2", Title: "active mid", Priority: PriorityP2, CreatedAt: time.Unix(2, 0)},
+		{ID: "active-p1", Title: "active high", Priority: PriorityP1, CreatedAt: time.Unix(3, 0)},
+		{ID: "parked-p2", Title: "parked mid", Priority: PriorityP2, Parked: true, CreatedAt: time.Unix(4, 0)},
+	}}
+	s.sortTasks()
+	want := []string{"active-p1", "active-p2", "parked-p1", "parked-p2"}
+	for i, id := range want {
+		if s.Tasks[i].ID != id {
+			t.Fatalf("index %d = %s, want %s (order: %+v)", i, s.Tasks[i].ID, id, ids(s))
+		}
+	}
+}
+
+func TestNormalizeParksExtraActiveP1s(t *testing.T) {
+	s := &Store{Tasks: []Task{
+		{ID: "newer", Title: "newer", Priority: PriorityP1, CreatedAt: time.Unix(2, 0)},
+		{ID: "older", Title: "older", Priority: PriorityP1, CreatedAt: time.Unix(1, 0)},
+	}}
+	changed := s.normalizeAndSort()
+	if !changed {
+		t.Fatal("expected normalize to change store")
+	}
+	older := s.Tasks[s.IndexByID("older")]
+	newer := s.Tasks[s.IndexByID("newer")]
+	if older.Parked {
+		t.Fatalf("oldest active P1 should stay unparked, got %+v", older)
+	}
+	if !newer.Parked {
+		t.Fatalf("newer P1 should be parked, got %+v", newer)
+	}
+	if s.ActiveP1Index() != s.IndexByID("older") {
+		t.Fatalf("active P1 = %d, want older", s.ActiveP1Index())
+	}
+}
+
+func TestMoveToCurrentParksConflictingP1(t *testing.T) {
+	useTempPath(t)
+	s := &Store{
+		WeekStart: WeekStart(time.Now()),
+		Tasks: []Task{
+			{ID: "focus", Title: "focus", Priority: PriorityP1, CreatedAt: time.Unix(1, 0)},
+		},
+		PastWeeks: []PastWeek{{
+			WeekStart: WeekStart(time.Now()).AddDate(0, 0, -7),
+			Tasks: []Task{
+				{ID: "old", Title: "old p1", Priority: PriorityP1, CreatedAt: time.Unix(10, 0)},
+			},
+		}},
+	}
+
+	if err := s.MoveToCurrent(0, 0); err != nil {
+		t.Fatal(err)
+	}
+	moved := s.Tasks[s.IndexByID("old")]
+	if !moved.Parked || moved.Priority != PriorityP1 {
+		t.Fatalf("moved task = %+v, want parked P1", moved)
+	}
+	if !s.Tasks[s.IndexByID("focus")].IsActiveP1() {
+		t.Fatal("focus should remain the active P1")
+	}
+}
+
+func TestToggleDoneClearsParked(t *testing.T) {
+	useTempPath(t)
+	s := &Store{WeekStart: WeekStart(time.Now()), Tasks: []Task{
+		{ID: "a", Title: "parked", Priority: PriorityP2, Parked: true, CreatedAt: time.Unix(1, 0)},
+	}}
+	if _, err := s.ToggleDone(0); err != nil {
+		t.Fatal(err)
+	}
+	if !s.Tasks[0].Done || s.Tasks[0].Parked {
+		t.Fatalf("expected done and unparked, got %+v", s.Tasks[0])
 	}
 }
 
