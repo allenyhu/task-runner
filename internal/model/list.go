@@ -73,7 +73,6 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "a":
 			m.mode = modeAdd
-			m.addPriority = store.PriorityP2
 			m.input.SetValue("")
 			m.input.Focus()
 			return m, textinput.Blink
