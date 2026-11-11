@@ -14,7 +14,7 @@ go run .
 
 Tasks persist to `~/.task-runner/tasks.json`. When a new week starts (Monday), completed tasks are cleared and incomplete ones are archived so you can pull them forward from **history**. Review always reflects the current week.
 
-Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered active before parked, then P1 → P3. Only **one active P1** is allowed at a time; park a task (`p`) to free the slot — parked P1s do not count toward the limit.
+Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered parked before active, then P1 → P3. Only **one active P1** is allowed at a time; park a task (`p`) to free the slot — parked P1s do not count toward the limit.
 
 ## Keybindings
 
@@ -31,7 +31,7 @@ Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered a
 | `h` | Previous weeks (history) |
 | `q` | Quit |
 
-In **add** mode: `ctrl+1` / `ctrl+2` / `ctrl+3` sets priority (default P2), `enter` saves, `esc` cancels. Digits type normally in the title.  
+In **add** mode: new tasks default to P2; set priority on the list with `1`/`2`/`3`. `enter` saves, `esc` cancels.  
 In **review** mode: `esc` or `r` returns to the list.  
 In **history** mode: `h`/`l` older/newer week, `j`/`k` move, `m` move task to this week, `d` delete leftover, `esc` back to the list.
 

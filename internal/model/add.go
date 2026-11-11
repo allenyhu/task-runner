@@ -19,18 +19,6 @@ func (m Model) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			m.mode = modeList
 			return m, nil
-		case "ctrl+1":
-			m.err = nil
-			m.addPriority = store.PriorityP1
-			return m, nil
-		case "ctrl+2":
-			m.err = nil
-			m.addPriority = store.PriorityP2
-			return m, nil
-		case "ctrl+3":
-			m.err = nil
-			m.addPriority = store.PriorityP3
-			return m, nil
 		case "enter":
 			title := strings.TrimSpace(m.input.Value())
 			if title == "" {
@@ -39,10 +27,9 @@ func (m Model) updateAdd(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mode = modeList
 				return m, nil
 			}
-			idx, err := m.store.AddTask(title, m.addPriority)
+			idx, err := m.store.AddTask(title, store.PriorityP2)
 			if err != nil {
 				m.err = err
-				// Stay in add mode so the user can change priority or cancel.
 				return m, nil
 			}
 			m.err = nil
@@ -69,10 +56,7 @@ func (m Model) viewAdd() string {
 	b.WriteString("\n")
 	b.WriteString(m.input.View())
 	b.WriteString("\n\n")
-	b.WriteString(style.StatLabel.Render("Priority  "))
-	b.WriteString(priorityLabel(m.addPriority))
-	b.WriteString("\n")
-	b.WriteString(style.Help.Render("ctrl+1/2/3: priority  enter: save  esc: cancel"))
+	b.WriteString(style.Help.Render("enter: save  esc: cancel"))
 	return b.String()
 }
 
