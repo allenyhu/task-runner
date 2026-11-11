@@ -397,8 +397,8 @@ func (s *Store) normalizeAndSort() bool {
 	return changed
 }
 
-// sortTasks orders incomplete before done; among incomplete, active before
-// parked; then priority ascending (P1 first), then CreatedAt ascending.
+// sortTasks orders incomplete before done; among incomplete, parked before
+// active; then priority ascending (P1 first), then CreatedAt ascending.
 func (s *Store) sortTasks() {
 	sort.SliceStable(s.Tasks, func(i, j int) bool {
 		a, b := s.Tasks[i], s.Tasks[j]
@@ -406,7 +406,7 @@ func (s *Store) sortTasks() {
 			return !a.Done // incomplete before done
 		}
 		if !a.Done && a.Parked != b.Parked {
-			return !a.Parked // active before parked
+			return a.Parked // parked before active
 		}
 		pi := NormalizePriority(a.Priority)
 		pj := NormalizePriority(b.Priority)

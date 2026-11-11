@@ -14,7 +14,7 @@ go run .
 
 Tasks persist to `~/.task-runner/tasks.json`. When a new week starts (Monday), completed tasks are cleared and incomplete ones are archived so you can pull them forward from **history**. Review always reflects the current week.
 
-Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered active before parked, then P1 → P3. Only **one active P1** is allowed at a time; park a task (`p`) to free the slot — parked P1s do not count toward the limit.
+Tasks have a priority of **P1**, **P2**, or **P3**. The list is always ordered parked before active, then P1 → P3. Only **one active P1** is allowed at a time; park a task (`p`) to free the slot — parked P1s do not count toward the limit.
 
 ## Keybindings
 

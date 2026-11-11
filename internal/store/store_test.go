@@ -416,11 +416,15 @@ func TestActiveP1AllowedWhenExistingParked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if idx != 0 {
-		t.Fatalf("new P1 index = %d, want 0", idx)
+	// Parked sorts above active; new active P1 lands after parked P1.
+	if idx != 1 {
+		t.Fatalf("new P1 index = %d, want 1", idx)
 	}
-	if s.Tasks[0].Title != "focus" || s.Tasks[0].Parked {
-		t.Fatalf("expected active focus P1 at top, got %+v", s.Tasks[0])
+	if s.Tasks[0].ID != "a" || !s.Tasks[0].Parked {
+		t.Fatalf("expected parked P1 at top, got %+v", s.Tasks[0])
+	}
+	if s.Tasks[1].Title != "focus" || s.Tasks[1].Parked {
+		t.Fatalf("expected active focus P1 after parked, got %+v", s.Tasks[1])
 	}
 
 	// Reset: only parked P1 + P3, promote P3 to P1.
@@ -432,8 +436,11 @@ func TestActiveP1AllowedWhenExistingParked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if newIdx != 0 || s.Tasks[0].ID != "c" {
-		t.Fatalf("promoted = index %d %+v, want 0 c", newIdx, s.Tasks[newIdx])
+	if newIdx != 1 || s.Tasks[newIdx].ID != "c" {
+		t.Fatalf("promoted = index %d %+v, want 1 c", newIdx, s.Tasks[newIdx])
+	}
+	if s.Tasks[0].ID != "a" || !s.Tasks[0].Parked {
+		t.Fatalf("parked P1 should stay at top, got %+v", s.Tasks[0])
 	}
 }
 
@@ -475,7 +482,7 @@ func TestToggleParkedFreesAndBlocksUnpark(t *testing.T) {
 	}
 }
 
-func TestSortActiveBeforeParked(t *testing.T) {
+func TestSortParkedBeforeActive(t *testing.T) {
 	s := &Store{Tasks: []Task{
 		{ID: "parked-p1", Title: "parked high", Priority: PriorityP1, Parked: true, CreatedAt: time.Unix(1, 0)},
 		{ID: "active-p2", Title: "active mid", Priority: PriorityP2, CreatedAt: time.Unix(2, 0)},
@@ -483,7 +490,7 @@ func TestSortActiveBeforeParked(t *testing.T) {
 		{ID: "parked-p2", Title: "parked mid", Priority: PriorityP2, Parked: true, CreatedAt: time.Unix(4, 0)},
 	}}
 	s.sortTasks()
-	want := []string{"active-p1", "active-p2", "parked-p1", "parked-p2"}
+	want := []string{"parked-p1", "parked-p2", "active-p1", "active-p2"}
 	for i, id := range want {
 		if s.Tasks[i].ID != id {
 			t.Fatalf("index %d = %s, want %s (order: %+v)", i, s.Tasks[i].ID, id, ids(s))
