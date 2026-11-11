@@ -91,6 +91,7 @@ func (m Model) updateList(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = modeHistory
 			m.histWeek = 0
 			m.histCursor = 0
+			m.histMoveArmed = true
 		}
 	}
 	return m, nil

@@ -18,6 +18,7 @@ func (m Model) updateHistory(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pendingG {
 				m.histCursor = 0
 				m.pendingG = false
+				m.histMoveArmed = true
 			} else {
 				m.pendingG = true
 			}
@@ -36,32 +37,41 @@ func (m Model) updateHistory(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if pw, ok := m.store.PastWeekAt(m.histWeek); ok && len(pw.Tasks) > 0 {
 				m.histCursor = len(pw.Tasks) - 1
 			}
+			m.histMoveArmed = true
 		case "h":
 			// Older week (further back in PastWeeks).
 			if m.histWeek < m.store.PastWeekCount()-1 {
 				m.histWeek++
 				m.histCursor = 0
 			}
+			m.histMoveArmed = true
 		case "l":
 			// Newer week (toward present).
 			if m.histWeek > 0 {
 				m.histWeek--
 				m.histCursor = 0
 			}
+			m.histMoveArmed = true
 		case "up", "k":
 			if m.histCursor > 0 {
 				m.histCursor--
 			}
+			m.histMoveArmed = true
 		case "down", "j":
 			if pw, ok := m.store.PastWeekAt(m.histWeek); ok && m.histCursor < len(pw.Tasks)-1 {
 				m.histCursor++
 			}
+			m.histMoveArmed = true
 		case "m":
+			if !m.histMoveArmed {
+				return m, nil
+			}
 			if pw, ok := m.store.PastWeekAt(m.histWeek); ok && len(pw.Tasks) > 0 {
 				if err := m.store.MoveToCurrent(m.histWeek, m.histCursor); err != nil {
 					m.err = err
 				} else {
 					m.clampHistoryCursor()
+					m.histMoveArmed = false
 				}
 			}
 		case "d":
